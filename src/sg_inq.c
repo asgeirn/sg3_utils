@@ -2365,11 +2365,29 @@ process_std_inq(int sg_fd, const struct opts_t * optsp)
                 } else
                     printf(" Product revision level: %s\n", xtra_buff);
             }
+            if (act_len > 36 && rsp_buff[36] != '\0' && rsp_buff[36] != ' ') {
+                memcpy(xtra_buff, &rsp_buff[36], act_len < 56 ? act_len - 36 :
+                       20);
+                if (optsp->do_export) {
+                    len = encode_whitespaces((unsigned char *)xtra_buff, 20);
+                    printf("VENDOR_SPECIFIC=%s\n", xtra_buff);
+                } else
+                    printf(" Vendor specific: %s\n", xtra_buff);
+            }
             if (optsp->do_descriptors) {
                 for (j = 0, k = 58; ((j < 8) && ((k + 1) < act_len));
                      k +=2, ++j)
                     vdesc_arr[j] = ((rsp_buff[k] << 8) +
                                     rsp_buff[k + 1]);
+            }
+            if (act_len > 96) {
+                memcpy(xtra_buff, &rsp_buff[96], act_len - 96);
+                if (optsp->do_export) {
+                    len = encode_whitespaces((unsigned char *)xtra_buff,
+                                             act_len - 96);
+                    printf("VENDOR_SPECIFIC=%s\n", xtra_buff);
+                } else
+                    printf(" Vendor specific: %s\n", xtra_buff);
             }
         }
         if (! (optsp->do_raw || optsp->do_hex || optsp->do_export)) {
