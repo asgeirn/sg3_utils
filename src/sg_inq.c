@@ -2363,7 +2363,7 @@ process_std_inq(int sg_fd, const struct opts_t * optsp)
         else
             act_len = (rlen < len) ? rlen : len;
         /* don't use more than HBA's resid says was transferred from LU */
-        if (act_len < (rlen - resid))
+        if (act_len > (rlen - resid))
             act_len = rlen - resid;
         if (optsp->do_raw)
             dStrRaw((const char *)rsp_buff, act_len);
