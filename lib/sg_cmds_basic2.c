@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999-2012 Douglas Gilbert.
+ * Copyright (c) 1999-2013 Douglas Gilbert.
  * All rights reserved.
  * Use of this source code is governed by a BSD-style
  * license that can be found in the BSD_LICENSE file.
@@ -593,8 +593,9 @@ sg_mode_page_offset(const unsigned char * resp, int resp_len,
 
     if ((NULL == resp) || (resp_len < 4) ||
         ((! mode_sense_6) && (resp_len < 8))) {
-        snprintf(err_buff, err_buff_len, "given response length too short: "
-                 "%d\n", resp_len);
+        if (err_buff_len > 0)
+            snprintf(err_buff, err_buff_len, "given response length too "
+                     "short: %d\n", resp_len);
         return -1;
     }
     if (mode_sense_6) {
@@ -608,14 +609,16 @@ sg_mode_page_offset(const unsigned char * resp, int resp_len,
         offset = bd_len + MODE10_RESP_HDR_LEN;
     }
     if ((offset + 2) > resp_len) {
-        snprintf(err_buff, err_buff_len, "given response length "
-                 "too small, offset=%d given_len=%d bd_len=%d\n",
-                 offset, resp_len, bd_len);
-         offset = -1;
+        if (err_buff_len > 0)
+            snprintf(err_buff, err_buff_len, "given response length "
+                     "too small, offset=%d given_len=%d bd_len=%d\n",
+                     offset, resp_len, bd_len);
+        offset = -1;
     } else if ((offset + 2) > calc_len) {
-        snprintf(err_buff, err_buff_len, "calculated response "
-                 "length too small, offset=%d calc_len=%d bd_len=%d\n",
-                 offset, calc_len, bd_len);
+        if (err_buff_len > 0)
+            snprintf(err_buff, err_buff_len, "calculated response "
+                     "length too small, offset=%d calc_len=%d bd_len=%d\n",
+                     offset, calc_len, bd_len);
         offset = -1;
     }
     return offset;
@@ -662,12 +665,12 @@ sg_get_mode_page_controls(int sg_fd, int mode6, int pg_code, int sub_pg_code,
     memset(buff, 0, MODE10_RESP_HDR_LEN);
     if (mode6)  /* want first 8 bytes just in case */
         res = sg_ll_mode_sense6(sg_fd, dbd, 0 /* pc */, pg_code,
-                                sub_pg_code, buff, MODE10_RESP_HDR_LEN, 0,
+                                sub_pg_code, buff, MODE10_RESP_HDR_LEN, 1,
                                 verbose);
     else
         res = sg_ll_mode_sense10(sg_fd, 0 /* llbaa */, dbd,
                                  0 /* pc */, pg_code, sub_pg_code, buff,
-                                 MODE10_RESP_HDR_LEN, 0, verbose);
+                                 MODE10_RESP_HDR_LEN, 1, verbose);
     if (0 != res)
         return res;
     n = buff[0];
@@ -719,11 +722,11 @@ sg_get_mode_page_controls(int sg_fd, int mode6, int pg_code, int sub_pg_code,
         if (mode6)
             res = sg_ll_mode_sense6(sg_fd, dbd, k /* pc */,
                                     pg_code, sub_pg_code, buff,
-                                    calc_len, 0, verbose);
+                                    calc_len, 1, verbose);
         else
             res = sg_ll_mode_sense10(sg_fd, 0 /* llbaa */, dbd,
                                      k /* pc */, pg_code, sub_pg_code,
-                                     buff, calc_len, 0, verbose);
+                                     buff, calc_len, 1, verbose);
         if (0 != res) {
             if (0 == first_err)
                 first_err = res;

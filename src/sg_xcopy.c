@@ -1,7 +1,7 @@
 /* A utility program for copying files. Similar to 'dd' but using
  * the 'Extended Copy' command.
  *
- *  Copyright (c) 2011-2012 Hannes Reinecke, SUSE Labs
+ *  Copyright (c) 2011-2013 Hannes Reinecke, SUSE Labs
  *
  *  Largely taken from 'sg_dd', which has the
  *
@@ -61,7 +61,7 @@
 #include "sg_cmds_extra.h"
 #include "sg_io_linux.h"
 
-static char * version_str = "0.31 20120919";
+static char * version_str = "0.33 20130207";
 
 #define ME "sg_xcopy: "
 
@@ -112,6 +112,9 @@ static char * version_str = "0.31 20120919";
 #define TD_RDMA 128
 #define TD_FW 256
 #define TD_SAS 512
+#define TD_IPV6 1024
+#define TD_IP_COPY_SERVICE 2048
+#define TD_ROD 4096
 
 #define DEV_NULL_MINOR_NUM 3
 
@@ -460,7 +463,7 @@ usage()
            "[seek=SEEK] [skip=SKIP]\n"
            "                 [--help] [--version]\n\n"
            "                 [bpt=BPT] [cat=0|1] [dc=0|1] "
-           "[id_usage=hold|discard]\n"
+           "[id_usage=hold|discard|disable]\n"
            "                 [list_id=ID] [prio=PRIO] [time=0|1] "
            "[verbose=VERB]\n"
            "  where:\n"
@@ -473,8 +476,9 @@ usage()
            "    dc          segment descriptor DC bit (default: 0)\n"
            "    ibs         input block size (if given must be same as "
            "'bs=')\n"
-           "    id_usage    sets list id usage field to hold (0) or "
-           "discard (2)\n"
+           "    id_usage    sets list id usage field to hold (0), "
+           "discard (2) or\n"
+           "                disable (3)\n"
            "    if          file or device to read from (def: stdin)\n"
            "    iflag       comma separated list from: [cat,dc,excl,"
            "flock,null]\n"
@@ -651,7 +655,7 @@ scsi_operating_parameter(struct xcopy_fp_t *xfp, int is_target)
                    rcBuff[15];
     max_segment_len = rcBuff[16] << 24 | rcBuff[17] << 16 |
         rcBuff[18] << 8 | rcBuff[19];
-    xfp->max_bytes = max_segment_len;
+    xfp->max_bytes = max_segment_len ? max_segment_len : ULONG_MAX;
     max_inline_data = rcBuff[20] << 24 | rcBuff[21] << 16 | rcBuff[22] << 8 |
                       rcBuff[23];
     if (verbose) {
@@ -873,6 +877,21 @@ scsi_operating_parameter(struct xcopy_fp_t *xfp, int is_target)
             if (verbose)
                 printf("        SAS target descriptor\n");
             td_list |= TD_SAS;
+            break;
+        case 0xea: /* IPv6 */
+            if (verbose)
+                printf("        IPv6 target descriptor\n");
+            td_list |= TD_IPV6;
+            break;
+        case 0xeb: /* IP Copy Service */
+            if (verbose)
+                printf("        IP Copy Service target descriptor\n");
+            td_list |= TD_IP_COPY_SERVICE;
+            break;
+        case 0xfe: /* ROD */
+            if (verbose)
+                printf("        ROD target descriptor\n");
+            td_list |= TD_ROD;
             break;
         default:
             fprintf(stderr, ">> Unhandled target descriptor 0x%02x\n",
@@ -1355,6 +1374,7 @@ main(int argc, char * argv[])
     int infd, outfd;
     int ret = 0;
     unsigned char list_id = 1;
+    int list_id_given = 0;
     unsigned char src_desc[256];
     unsigned char dst_desc[256];
     int src_desc_len;
@@ -1406,11 +1426,14 @@ main(int argc, char * argv[])
                 return SG_LIB_SYNTAX_ERROR;
             }
             list_id = (ret & 0xff);
+            list_id_given = 1;
         } else if (0 == strcmp(key, "id_usage")) {
             if (!strncmp(buf, "hold", 4))
                 list_id_usage = 0;
             else if (!strncmp(buf, "discard", 7))
                 list_id_usage = 2;
+            else if (!strncmp(buf, "disable", 7))
+                list_id_usage = 3;
             else {
                 fprintf(stderr, ME "bad argument to 'list_id_usage='\n");
                 return SG_LIB_SYNTAX_ERROR;
@@ -1499,7 +1522,19 @@ main(int argc, char * argv[])
                    (0 == strcmp(key, "-V"))) {
             fprintf(stderr, ME "%s\n", version_str);
             return 0;
-        } else {
+        } else if (0 == strncmp(key, "--verb", 6))
+            verbose += 1;
+        else if (0 == strcmp(key, "-vvvvv"))
+            verbose += 5;
+        else if (0 == strcmp(key, "-vvvv"))
+            verbose += 4;
+        else if (0 == strcmp(key, "-vvv"))
+            verbose += 3;
+        else if (0 == strcmp(key, "-vv"))
+            verbose += 2;
+        else if (0 == strcmp(key, "-v"))
+            verbose += 1;
+        else {
             fprintf(stderr, "Unrecognized option '%s'\n", key);
             fprintf(stderr, "For more information use '--help'\n");
             return SG_LIB_SYNTAX_ERROR;
@@ -1527,6 +1562,14 @@ main(int argc, char * argv[])
     if (bpt < 1) {
         fprintf(stderr, "bpt must be greater than 0\n");
         return SG_LIB_SYNTAX_ERROR;
+    }
+    if (list_id_usage == 3) { /* list_id usage disabled */
+        if (!list_id_given)
+            list_id = 0;
+        if (list_id) {
+            fprintf(stderr, "list_id disabled by id_usage flag\n");
+            return SG_LIB_SYNTAX_ERROR;
+        }
     }
 
 #ifdef SG_DEBUG
@@ -1777,7 +1820,7 @@ main(int argc, char * argv[])
     fprintf(stderr,
             "Start of loop, count=%"PRId64", bpt=%d, "
             "lba_in=%"PRId64", lba_out=%"PRId64"\n",
-            dd_count, bpt, skip, skip + seek);
+            dd_count, bpt, skip, seek);
 #endif
     while (dd_count > 0) {
         if (dd_count > bpt)
@@ -1786,7 +1829,7 @@ main(int argc, char * argv[])
             blocks = dd_count;
         res = scsi_extended_copy(infd, list_id, src_desc, src_desc_len,
                                  dst_desc, dst_desc_len, seg_desc_type,
-                                 blocks, skip, skip + seek);
+                                 blocks, skip, seek);
         if (res != 0)
             break;
         in_full += blocks;
