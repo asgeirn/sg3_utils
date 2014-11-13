@@ -17,7 +17,7 @@ bin_PROGRAMS = \
 	sg_sanitize sg_sat_identify sg_sat_phy_event sg_sat_set_features \
 	sg_scan sg_senddiag sg_ses sg_start sg_stpg sg_sync sg_test_rwbuf \
 	sg_turs sg_unmap sg_verify sg_vpd sg_write_buffer sg_write_long \
-	sg_write_same sg_wr_mode sg_xcopy sg_compare_and_write
+	sg_write_same sg_wr_mode sg_xcopy sg_compare_and_write sg_density
 
 distclean-local:
 	rm -f sg_scan.c
@@ -180,6 +180,9 @@ sg_prevent_LDADD = ../lib/libsgutils2.la @os_libs@
 
 sg_raw_SOURCES = sg_raw.c
 sg_raw_LDADD = ../lib/libsgutils2.la @os_libs@
+
+sg_density_SOURCES = sg_density.c
+sg_density_LDADD = ../lib/libsgutils2.la @os_libs@
 
 sg_rbuf_SOURCES = sg_rbuf.c
 sg_rbuf_LDADD = ../lib/libsgutils2.la @os_libs@
